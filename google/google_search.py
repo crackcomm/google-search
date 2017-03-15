@@ -28,13 +28,15 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-__all__ = ['search', 'search_images', 'search_news', 'search_videos',
-           'search_shop', 'search_books', 'search_apps', 'lucky']
+__all__ = ['GoogleSearch']
 
 import os
 import random
 import sys
 import time
+
+import requests
+from bs4 import BeautifulSoup
 
 if sys.version_info[0] > 2:
     from urllib.parse import quote_plus, urlparse, parse_qs
@@ -42,8 +44,6 @@ else:
     from urllib import quote_plus
     from urlparse import urlparse, parse_qs
 
-from bs4 import BeautifulSoup
-import requests
 
 # URL templates to make Google searches.
 URL_HOME = "https://www.google.%(tld)s/"
@@ -69,16 +69,20 @@ URL_NEXT_PAGE_NUM = "https://www.google.%(tld)s/search?hl=%(lang)s&q=%(query)s&n
 USER_AGENT = 'Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.0)'
 
 # Load the list of valid user agents from the install folder.
-install_folder = os.path.abspath(os.path.split(__file__)[0])
-user_agents_file = os.path.join(install_folder, 'user_agents.txt')
+INSTALL_FOLDER = os.path.abspath(os.path.split(__file__)[0])
+
 try:
     with open('user_agents.txt') as fp:
-        user_agents_list = [_.strip() for _ in fp.readlines()]
+        USER_AGENTS_LIST = [_.strip() for _ in fp.readlines()]
 except Exception:
-    user_agents_list = [USER_AGENT]
+    USER_AGENTS_LIST = [USER_AGENT]
 
 
 class GoogleSearch(object):
+    """
+    Google search
+    """
+
     def __init__(self, user_agent=USER_AGENT, proxies=None, cookies=None):
         self.headers = {'User-Agent': user_agent}
         self.proxies = proxies
@@ -91,7 +95,7 @@ class GoogleSearch(object):
         @rtype:  str
         @return: Random user agent string.
         """
-        return random.choice(user_agents_list)
+        return random.choice(USER_AGENTS_LIST)
 
     def get_page(self, url):
         """
@@ -108,17 +112,14 @@ class GoogleSearch(object):
         @raise urllib2.HTTPError: An exception is raised on error.
         """
 
-        s = requests.session()
-
-        # s.cookies = cookie_jar
+        sess = requests.session()
         if self.cookies:
-            s.cookies = self.cookies
-        s.headers = self.headers
-        s.proxies = self.proxies
+            sess.cookies = self.cookies
+        sess.headers = self.headers
+        sess.proxies = self.proxies
 
-        response = s.get(url)
-        # s.cookies.save(ignore_discard=True)
-        self.cookies = s.cookies
+        response = sess.get(url)
+        self.cookies.save()
 
         html = response.content
         return html
@@ -239,15 +240,16 @@ class GoogleSearch(object):
             else:
                 url = URL_SEARCH_NUM % vars()
 
-        # Loop until we reach the maximum result, if any (otherwise, loop forever).
+        # Loop until we reach the maximum result, if any
+        # (otherwise, loop forever).
         while not stop or start < stop:
             try:  # Is it python<3?
                 iter_extra_params = extra_params.iteritems()
             except AttributeError:  # Or python>3?
                 iter_extra_params = extra_params.items()
             # Append extra GET_parameters to URL
-            for k, v in iter_extra_params:
-                url += url + ('&%s=%s' % (k, v))
+            for key, value in iter_extra_params:
+                url += url + ('&%s=%s' % (key, value))
 
             # Sleep between requests.
             time.sleep(pause)
@@ -258,17 +260,17 @@ class GoogleSearch(object):
             # Parse the response and process every anchored URL.
             soup = BeautifulSoup(html, 'html.parser')
             anchors = soup.find(id='search').findAll('a')
-            for a in anchors:
+            for anchor in anchors:
 
                 # Leave only the "standard" results if requested.
                 # Otherwise grab all possible links.
                 if only_standard and (
-                            not a.parent or a.parent.name.lower() != "h3"):
+                        not anchor.parent or anchor.parent.name.lower() != "h3"):
                     continue
 
                 # Get the URL from the anchor tag.
                 try:
-                    link = a['href']
+                    link = anchor['href']
                 except KeyError:
                     continue
 
@@ -278,10 +280,10 @@ class GoogleSearch(object):
                     continue
 
                 # Discard repeated results.
-                h = hash(link)
-                if h in hashes:
+                hsh = hash(link)
+                if hsh in hashes:
                     continue
-                hashes.add(h)
+                hashes.add(hsh)
 
                 # Yield the result.
                 yield link
@@ -394,20 +396,12 @@ def main():
 
     :return:
     """
-    q = 'Viet Nam'
-
-    # proxies = {'http': 'http://5.230.133.118:3245'}
-    # proxies = {'http': 'http://5.230.133.19:3146'}
+    query = 'Viet Nam'
     proxies = {'http': 'http://94.249.224.38:1165'}
+    goog = GoogleSearch(proxies=proxies)
 
-    gs = GoogleSearch(proxies=proxies)
-
-    for url in gs.search(q, stop=10):
-        print(url)
-
-        #     '{} Australia'.format(company), stop=10,
-        #                      user_agent=google.get_random_user_agent(), tld=self._get_random_google_tld()):
-        # # urlparsed = urllib.parse.urlparse(url)
+    for url in goog.search(query, stop=10):
+        print url
 
 
 if __name__ == '__main__':
