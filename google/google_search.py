@@ -37,6 +37,7 @@ import time
 
 import requests
 from bs4 import BeautifulSoup
+from cookielib import LWPCookieJar
 
 if sys.version_info[0] > 2:
     from urllib.parse import quote_plus, urlparse, parse_qs
@@ -77,13 +78,24 @@ try:
 except Exception:
     USER_AGENTS_LIST = [USER_AGENT]
 
+def user_cookies():
+    """ gets cookie jar stored in ~/.google-cookies/ """
+    home = os.getenv('HOME')
+    if not home:
+        home = '.'
+    jar = LWPCookieJar(os.path.join(home, '.google-cookies'))
+    try:
+        jar.load()
+    except IOError:
+        pass
+    return jar
 
 class GoogleSearch(object):
     """
     Google search
     """
 
-    def __init__(self, user_agent=USER_AGENT, proxies=None, cookies=None):
+    def __init__(self, user_agent=USER_AGENT, proxies=None, cookies=user_cookies()):
         self.headers = {'User-Agent': user_agent}
         self.proxies = proxies
         self.cookies = cookies
